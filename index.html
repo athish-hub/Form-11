@@ -900,11 +900,11 @@ async function downloadPDF() {
 
     // ── Field 9: Previous Employment ─────────────────────────────────────
     if (d.epf_member_1952 === 'Yes' || d.eps_member_1995 === 'Yes') {
-      txt(260, 282, d.uan);
-      txt(260, 297, d.previous_pf_account);
-      txt(260, 313, d.date_of_exit);
-      txt(260, 328, d.scheme_certificate || 'N/A');
-      txt(260, 344, d.ppo || 'N/A');
+      txt(250, 272, d.uan);
+      txt(250, 287, d.previous_pf_account);
+      txt(250, 302, d.date_of_exit);
+      txt(250, 317, d.scheme_certificate || 'N/A');
+      txt(250, 333, d.ppo || 'N/A');
     }
 
     // ── Field 10: International Worker ───────────────────────────────────
@@ -921,10 +921,10 @@ async function downloadPDF() {
     txt(373, 468, d.pan);
 
     // ── Field 12: EPF History ─────────────────────────────────────────────
-    txt(90,  519, d.first_epf_enrolled_date);
-    txt(165, 519, d.first_employment_epf_wages);
+    txt(87,  510, d.first_epf_enrolled_date);
+    txt(162, 510, d.first_employment_epf_wages);
 
-    markYN(d.epf_member_before_2014,  263.3, 274.9, 282.4, 291.3, 524);
+    markYN(d.epf_member_before_2014,  263.3, 274.9, 282.4, 291.3, 524);  // structY+10 below text top 513.8
     markYN(d.epf_amount_withdrawn,    336.0, 347.6, 355.1, 364.0, 524);
     markYN(d.eps_amount_withdrawn,    408.7, 420.3, 427.8, 436.7, 524);
     markYN(d.eps_after_sep2014_withdrawn, 486.1, 497.7, 505.3, 514.1, 524);
