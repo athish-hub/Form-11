@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Form 11 — PICE</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f3f4f6;
+      min-height: 100vh;
+    }
+
+    /* ── Top Bar ─────────────────────────────────────────── */
+    #topbar {
+      position: sticky; top: 0; z-index: 100;
+      background: #1a56db;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+    }
+    #topbar .left { display: flex; align-items: center; gap: 12px; }
+    #topbar .logo {
+      background: #fff; color: #1a56db;
+      font-weight: 800; font-size: 15px;
+      width: 36px; height: 36px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #topbar h1 { color: #fff; font-size: 17px; font-weight: 600; }
+    #topbar .sub { color: #bfdbfe; font-size: 12px; }
+    #topbar .right { display: flex; gap: 10px; }
+    .btn {
+      padding: 9px 18px; border-radius: 8px; border: none;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: all .15s;
+    }
+    #clearBtn { background: rgba(255,255,255,.15); color: #fff; }
+    #clearBtn:hover { background: rgba(255,255,255,.25); }
+    #downloadBtn {
+      background: #fff; color: #1a56db;
+      display: flex; align-items: center; gap: 6px;
+    }
+    #downloadBtn:hover { background: #eff6ff; }
+    #downloadBtn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── Info banner ─────────────────────────────────────── */
+    #infoBanner {
+      max-width: 960px; margin: 16px auto 0;
+      background: #eff6ff; border: 1px solid #bfdbfe;
+      border-radius: 10px; padding: 12px 18px;
+      font-size: 13px; color: #1e40af; line-height: 1.5;
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    #infoBanner .icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+    /* ── Form wrapper ────────────────────────────────────── */
+    #formOuter {
+      max-width: 960px; margin: 16px auto 40px;
+      padding: 0 16px;
+    }
+
+    /* The form canvas: image + all overlays */
+    #formCanvas {
+      position: relative;
+      width: 100%;
+      /* aspect-ratio matches PDF 612 × 792 */
+      aspect-ratio: 612 / 792;
+      background: #fff;
+      border-radius: 4px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.15);
+      overflow: visible;
+    }
+    #formImg {
+      width: 100%; height: 100%;
+      display: block;
+      border-radius: 4px;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    /* ── Overlay inputs ──────────────────────────────────── */
+    .ov-input {
+      position: absolute;
+      background: rgba(219,234,254,.55);
+      border: 1.5px solid rgba(59,130,246,.35);
+      border-radius: 3px;
+      padding: 0 4px;
+      font-family: Arial, sans-serif;
+      font-size: clamp(7px, 1.15vw, 11px);
+      color: #1e3a8a;
+      outline: none;
+      transition: background .15s, border-color .15s;
+    }
+    .ov-input::placeholder { color: rgba(30,58,138,.35); font-style: italic; }
+    .ov-input:focus {
+      background: rgba(219,234,254,.9);
+      border-color: #2563eb;
+    }
+    .ov-input.disabled {
+      background: rgba(229,231,235,.4);
+      border-color: rgba(209,213,219,.5);
+      color: #9ca3af; pointer-events: none;
+    }
+
+    /* Select elements matching text inputs */
+    .ov-select {
+      position: absolute;
+      background: rgba(219,234,254,.55);
+      border: 1.5px solid rgba(59,130,246,.35);
+      border-radius: 3px;
+      padding: 0 2px;
+      font-family: Arial, sans-serif;
+      font-size: clamp(7px, 1.15vw, 11px);
+      color: #1e3a8a;
+      outline: none;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    .ov-select:focus {
+      background: rgba(219,234,254,.9);
+      border-color: #2563eb;
+    }
+
+    /* ── Father / Spouse radio ───────────────────────────── */
+    .relation-radios {
+      position: absolute;
+      display: flex; gap: 0;
+    }
+    .rel-opt {
+      cursor: pointer;
+      width: 1.3%;   /* ~8px at 612px ref */
+      aspect-ratio: 1;
+      border: 1.5px solid rgba(59,130,246,.5);
+      border-radius: 2px;
+      background: rgba(219,234,254,.4);
+      display: flex; align-items: center; justify-content: center;
+      font-size: clamp(7px, 1.0vw, 10px);
+      color: #1e3a8a;
+      font-weight: 700;
+    }
+    .rel-opt.selected {
+      background: #2563eb;
+      border-color: #1d4ed8;
+      color: #fff;
+    }
+
+    /* ── Yes / No toggle spans ───────────────────────────── */
+    .yn-opt {
+      position: absolute;
+      cursor: pointer;
+      border: 1.5px dashed rgba(59,130,246,.55);
+      border-radius: 3px;
+      background: rgba(219,234,254,.35);
+      transition: all .15s;
+      /* text is transparent — the form image already has Yes / No printed */
+      color: transparent;
+      font-size: 1px;
+    }
+    .yn-opt:hover {
+      background: rgba(219,234,254,.7);
+      border-color: rgba(59,130,246,.9);
+    }
+    .yn-opt.selected {
+      background: rgba(254,226,226,.5);
+      border: 1.5px solid #dc2626;
+      border-bottom: 3px solid #dc2626;
+    }
+    /* Small "Yes" / "No" label beneath each option so user knows what they're clicking */
+    .yn-opt::after {
+      content: attr(data-label);
+      position: absolute;
+      bottom: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: clamp(7px, 0.75vw, 9px);
+      color: #6b7280;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .yn-opt.selected::after { color: #dc2626; font-weight: 700; }
+
+    /* ── Help (?) buttons ────────────────────────────────── */
+    .help-btn {
+      position: absolute;
+      right: -28px;      /* just outside the form's right edge */
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: #e0e7ff;
+      border: 1.5px solid #818cf8;
+      color: #4338ca;
+      font-size: 11px; font-weight: 700;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transform: translateY(-50%);
+      transition: background .15s;
+      z-index: 10;
+    }
+    .help-btn:hover { background: #c7d2fe; }
+
+    /* ── Validation error highlight ──────────────────────── */
+    .ov-input.error, .ov-select.error { border-color: #ef4444 !important; background: rgba(254,226,226,.5) !important; }
+
+    /* ── Help Modal ──────────────────────────────────────── */
+    #helpOverlay {
+      display: none;
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.45);
+      align-items: center; justify-content: center;
+    }
+    #helpOverlay.open { display: flex; }
+    #helpBox {
+      background: #fff;
+      border-radius: 14px;
+      padding: 24px 28px;
+      max-width: 420px; width: 90%;
+      box-shadow: 0 20px 60px rgba(0,0,0,.2);
+      animation: popIn .2s ease;
+      position: relative;
+    }
+    @keyframes popIn { from { transform: scale(.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    #helpBox h3 {
+      font-size: 16px; font-weight: 700; color: #1e3a8a; margin-bottom: 10px;
+    }
+    #helpBox p { font-size: 14px; color: #374151; line-height: 1.6; }
+    #helpBox .example {
+      margin-top: 10px; background: #eff6ff; border-radius: 8px;
+      padding: 8px 12px; font-size: 13px; color: #1e40af; font-style: italic;
+    }
+    #closeHelp {
+      position: absolute; top: 14px; right: 16px;
+      background: none; border: none; font-size: 20px;
+      cursor: pointer; color: #6b7280;
+    }
+    #closeHelp:hover { color: #111; }
+
+    /* ── Toast ───────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #1f2937; color: #fff;
+      padding: 10px 20px; border-radius: 8px;
+      font-size: 14px; z-index: 300;
+      opacity: 0; transition: opacity .3s;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div id="topbar">
+  <div class="left">
+    <div class="logo">P</div>
+    <div>
+      <div style="color:#fff;font-size:17px;font-weight:600;">Form 11 — EPF &amp; EPS Declaration</div>
+      <div style="color:#bfdbfe;font-size:12px;">PICE · Fill all highlighted fields, then download</div>
+    </div>
+  </div>
+  <div class="right">
+    <button class="btn" id="clearBtn" onclick="clearAll()">↺ Clear</button>
+    <button class="btn" id="downloadBtn" onclick="downloadPDF()">⬇ Download PDF</button>
+  </div>
+</div>
+
+<!-- Info banner -->
+<div id="infoBanner">
+  <div class="icon">💡</div>
+  <div>
+    Fill in every <strong>blue highlighted field</strong> directly on the form below.
+    Click the <strong style="color:#4338ca">?</strong> button next to any field if you're unsure what to enter.
+    Fields that appear <strong>grey</strong> are not required based on your earlier answers.
+    When done, click <strong>Download PDF</strong> to save your filled Form 11.
+  </div>
+</div>
+
+<!-- Form canvas -->
+<div id="formOuter">
+  <div id="formCanvas">
+
+    <!-- Background form image -->
+    <img id="formImg" src="form11.png" alt="Form 11 Template" />
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 1 — Name of Member
+         ════════════════════════════════════════════════════ -->
+    <input class="ov-input" id="f_name" placeholder="Full name as on Aadhaar"
+           style="left:60.9%;top:12.8%;width:35.1%;height:1.9%;" />
+    <button class="help-btn" style="top:13.7%;" onclick="showHelp('name')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 2 — Relation type (Father / Spouse checkboxes)
+         ════════════════════════════════════════════════════ -->
+    <!-- Father checkbox -->
+    <div class="rel-opt" id="rel_father"
+         style="position:absolute;left:26.6%;top:15.4%;width:1.4%;aspect-ratio:1;"
+         onclick="selectRelation('Father')" title="Father"></div>
+    <!-- Spouse checkbox -->
+    <div class="rel-opt" id="rel_spouse"
+         style="position:absolute;left:46.6%;top:15.4%;width:1.4%;aspect-ratio:1;"
+         onclick="selectRelation('Spouse')" title="Spouse"></div>
+
+    <!-- Parent name -->
+    <input class="ov-input" id="f_parent_name" placeholder="Father's / Spouse's full name"
+           style="left:60.9%;top:15.2%;width:35.1%;height:1.9%;" />
+    <button class="help-btn" style="top:16.1%;" onclick="showHelp('parent_name')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 3 — Date of Birth
+         ════════════════════════════════════════════════════ -->
+    <input class="ov-input" id="f_dob" placeholder="DD/MM/YYYY"
+           style="left:60.9%;top:17.3%;width:35.1%;height:1.9%;" maxlength="10" />
+    <button class="help-btn" style="top:18.2%;" onclick="showHelp('dob')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 4 — Gender
+         ════════════════════════════════════════════════════ -->
+    <select class="ov-select" id="f_gender"
+            style="left:60.9%;top:19.2%;width:35.1%;height:1.9%;">
+      <option value="">— Select —</option>
+      <option value="Male">Male</option>
+      <option value="Female">Female</option>
+      <option value="Transgender">Transgender</option>
+    </select>
+    <button class="help-btn" style="top:20.1%;" onclick="showHelp('gender')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 5 — Marital Status
+         ════════════════════════════════════════════════════ -->
+    <select class="ov-select" id="f_marital"
+            style="left:60.9%;top:21.1%;width:35.1%;height:1.9%;">
+      <option value="">— Select —</option>
+      <option value="Single">Single</option>
+      <option value="Married">Married</option>
+      <option value="Widow">Widow</option>
+      <option value="Widower">Widower</option>
+      <option value="Divorcee">Divorcee</option>
+    </select>
+    <button class="help-btn" style="top:22.0%;" onclick="showHelp('marital')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 6a — Email
+         ════════════════════════════════════════════════════ -->
+    <input class="ov-input" id="f_email" type="email" placeholder="your@email.com"
+           style="left:60.9%;top:23.1%;width:35.1%;height:1.9%;" />
+    <button class="help-btn" style="top:24.0%;" onclick="showHelp('email')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 6b — Mobile
+         ════════════════════════════════════════════════════ -->
+    <input class="ov-input" id="f_mobile" placeholder="10-digit mobile (Aadhaar linked)"
+           style="left:60.9%;top:25.1%;width:35.1%;height:1.9%;" maxlength="10" />
+    <button class="help-btn" style="top:26.0%;" onclick="showHelp('mobile')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 7 — EPF Member (Yes / No)
+         ════════════════════════════════════════════════════ -->
+    <span class="yn-opt" id="yn_epf_yes" data-label="Yes"
+          style="left:67.1%;top:27.4%;width:2.2%;height:1.7%;"
+          onclick="selectYN('epf','Yes')"></span>
+    <span class="yn-opt" id="yn_epf_no" data-label="No"
+          style="left:70.8%;top:27.4%;width:1.7%;height:1.7%;"
+          onclick="selectYN('epf','No')"></span>
+    <button class="help-btn" style="top:28.1%;" onclick="showHelp('epf')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 8 — EPS Member (Yes / No)
+         ════════════════════════════════════════════════════ -->
+    <span class="yn-opt" id="yn_eps_yes" data-label="Yes"
+          style="left:67.1%;top:30.4%;width:2.2%;height:1.7%;"
+          onclick="selectYN('eps','Yes')"></span>
+    <span class="yn-opt" id="yn_eps_no" data-label="No"
+          style="left:70.8%;top:30.4%;width:1.7%;height:1.7%;"
+          onclick="selectYN('eps','No')"></span>
+    <button class="help-btn" style="top:31.0%;" onclick="showHelp('eps')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 9 — Previous Employment (shown when 7 or 8 = Yes)
+         ════════════════════════════════════════════════════ -->
+    <input class="ov-input disabled" id="f_uan" placeholder="12-digit UAN"
+           style="left:40.8%;top:34.3%;width:54.1%;height:1.9%;" />
+    <button class="help-btn" style="top:35.2%;" onclick="showHelp('uan')">?</button>
+
+    <input class="ov-input disabled" id="f_prev_pf" placeholder="e.g. MH/BAN/12345/678"
+           style="left:40.8%;top:36.2%;width:54.1%;height:1.9%;" />
+    <button class="help-btn" style="top:37.1%;" onclick="showHelp('prev_pf')">?</button>
+
+    <input class="ov-input disabled" id="f_date_exit" placeholder="DD/MM/YYYY"
+           style="left:40.8%;top:38.1%;width:54.1%;height:1.9%;" maxlength="10" />
+    <button class="help-btn" style="top:39.0%;" onclick="showHelp('date_exit')">?</button>
+
+    <input class="ov-input disabled" id="f_scheme_cert" placeholder="N/A if not issued"
+           style="left:40.8%;top:40.0%;width:54.1%;height:1.9%;" />
+    <button class="help-btn" style="top:40.9%;" onclick="showHelp('scheme_cert')">?</button>
+
+    <input class="ov-input disabled" id="f_ppo" placeholder="N/A if not applicable"
+           style="left:40.8%;top:42.0%;width:54.1%;height:1.9%;" />
+    <button class="help-btn" style="top:42.9%;" onclick="showHelp('ppo')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 10a — International Worker (Yes / No)
+         ════════════════════════════════════════════════════ -->
+    <span class="yn-opt" id="yn_intl_yes" data-label="Yes"
+          style="left:67.1%;top:44.2%;width:2.2%;height:1.7%;"
+          onclick="selectYN('intl','Yes')"></span>
+    <span class="yn-opt" id="yn_intl_no" data-label="No"
+          style="left:70.8%;top:44.2%;width:1.7%;height:1.7%;"
+          onclick="selectYN('intl','No')"></span>
+    <button class="help-btn" style="top:44.9%;" onclick="showHelp('intl')">?</button>
+
+    <!-- Fields 10b–d (shown only if International = Yes) -->
+    <input class="ov-input disabled" id="f_country" placeholder="Country of origin"
+           style="left:60.9%;top:45.8%;width:35.1%;height:1.9%;" />
+    <button class="help-btn" style="top:46.7%;" onclick="showHelp('country')">?</button>
+
+    <input class="ov-input disabled" id="f_passport_no" placeholder="Passport number"
+           style="left:60.9%;top:47.7%;width:35.1%;height:1.9%;" />
+    <button class="help-btn" style="top:48.6%;" onclick="showHelp('passport')">?</button>
+
+    <input class="ov-input disabled" id="f_passport_val" placeholder="DD/MM/YYYY"
+           style="left:60.9%;top:49.7%;width:35.1%;height:1.9%;" maxlength="10" />
+    <button class="help-btn" style="top:50.6%;" onclick="showHelp('passport_val')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 11 — KYC Details
+         ════════════════════════════════════════════════════ -->
+    <input class="ov-input" id="f_bank" placeholder="Acc No: XXXX  IFSC: XXXX0000000"
+           style="left:60.9%;top:53.9%;width:35.1%;height:1.9%;" />
+    <button class="help-btn" style="top:54.8%;" onclick="showHelp('bank')">?</button>
+
+    <input class="ov-input" id="f_aadhaar" placeholder="12-digit Aadhaar number"
+           style="left:60.9%;top:55.9%;width:35.1%;height:1.9%;" maxlength="14" />
+    <button class="help-btn" style="top:56.8%;" onclick="showHelp('aadhaar')">?</button>
+
+    <input class="ov-input" id="f_pan" placeholder="e.g. ABCDE1234F  (or N/A)"
+           style="left:60.9%;top:58.0%;width:35.1%;height:1.9%;" maxlength="10" />
+    <button class="help-btn" style="top:58.9%;" onclick="showHelp('pan')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         FIELD 12 — EPF History Table
+         ════════════════════════════════════════════════════ -->
+    <input class="ov-input" id="f_first_epf_date" placeholder="DD/MM/YYYY"
+           style="left:14.2%;top:64.4%;width:11.4%;height:1.9%;" maxlength="10" />
+    <button class="help-btn" style="top:65.3%;right:-28px;" onclick="showHelp('first_epf_date')">?</button>
+
+    <input class="ov-input" id="f_first_epf_wages" placeholder="e.g. 25000"
+           style="left:26.5%;top:64.4%;width:11.8%;height:1.9%;" />
+    <button class="help-btn" style="top:65.3%;right:-28px;" onclick="showHelp('first_epf_wages')">?</button>
+
+    <!-- Row 12 Yes/No columns -->
+    <!-- Col 3: EPF before 01/09/2014 -->
+    <span class="yn-opt" id="yn_r12c3_yes" data-label="Yes"
+          style="left:43.0%;top:64.4%;width:1.9%;height:1.9%;"
+          onclick="selectYN('r12c3','Yes')"></span>
+    <span class="yn-opt" id="yn_r12c3_no" data-label="No"
+          style="left:46.1%;top:64.4%;width:1.5%;height:1.9%;"
+          onclick="selectYN('r12c3','No')"></span>
+
+    <!-- Col 4: EPF Amount Withdrawn -->
+    <span class="yn-opt" id="yn_r12c4_yes" data-label="Yes"
+          style="left:54.9%;top:64.4%;width:1.9%;height:1.9%;"
+          onclick="selectYN('r12c4','Yes')"></span>
+    <span class="yn-opt" id="yn_r12c4_no" data-label="No"
+          style="left:58.0%;top:64.4%;width:1.5%;height:1.9%;"
+          onclick="selectYN('r12c4','No')"></span>
+
+    <!-- Col 5: EPS Withdrawn -->
+    <span class="yn-opt" id="yn_r12c5_yes" data-label="Yes"
+          style="left:66.8%;top:64.4%;width:1.9%;height:1.9%;"
+          onclick="selectYN('r12c5','Yes')"></span>
+    <span class="yn-opt" id="yn_r12c5_no" data-label="No"
+          style="left:69.9%;top:64.4%;width:1.5%;height:1.9%;"
+          onclick="selectYN('r12c5','No')"></span>
+
+    <!-- Col 6: EPS after Sep 2014 -->
+    <span class="yn-opt" id="yn_r12c6_yes" data-label="Yes"
+          style="left:79.4%;top:64.4%;width:1.9%;height:1.9%;"
+          onclick="selectYN('r12c6','Yes')"></span>
+    <span class="yn-opt" id="yn_r12c6_no" data-label="No"
+          style="left:82.6%;top:64.4%;width:1.5%;height:1.9%;"
+          onclick="selectYN('r12c6','No')"></span>
+
+    <!-- Row 12 help button (one covers all columns) -->
+    <button class="help-btn" style="top:65.3%;" onclick="showHelp('row12')">?</button>
+
+    <!-- ════════════════════════════════════════════════════
+         UNDERTAKING — Date, Place, Signature
+         ════════════════════════════════════════════════════ -->
+    <input class="ov-input" id="f_date" placeholder="DD/MM/YYYY"
+           style="left:16.3%;top:74.9%;width:18%;height:1.9%;" maxlength="10" />
+    <button class="help-btn" style="top:75.7%;right:-28px;" onclick="showHelp('sign_date')">?</button>
+
+    <input class="ov-input" id="f_place" placeholder="City / Town"
+           style="left:16.3%;top:76.4%;width:18%;height:1.9%;" />
+    <button class="help-btn" style="top:77.2%;right:-28px;" onclick="showHelp('sign_place')">?</button>
+
+    <!-- Signature hint label (physical signature — no text input) -->
+    <div style="position:absolute;left:49%;top:74.9%;width:42%;height:4%;
+                display:flex;align-items:center;justify-content:center;
+                border:1.5px dashed rgba(59,130,246,.4);border-radius:4px;
+                background:rgba(219,234,254,.2);pointer-events:none;">
+      <span style="font-size:10px;color:rgba(59,130,246,.7);font-style:italic;">Sign here (pen)</span>
+    </div>
+
+  </div><!-- end #formCanvas -->
+</div><!-- end #formOuter -->
+
+<!-- ══════════════════════════════════════════════════════════
+     Help Modal
+     ══════════════════════════════════════════════════════════ -->
+<div id="helpOverlay" onclick="closeHelp(event)">
+  <div id="helpBox">
+    <button id="closeHelp" onclick="closeHelp()">×</button>
+    <h3 id="helpTitle">Field Guide</h3>
+    <p id="helpText"></p>
+    <p id="helpExample" class="example" style="display:none;"></p>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ══════════════════════════════════════════════════════════
+     JavaScript
+     ══════════════════════════════════════════════════════════ -->
+<script>
+// ── State ──────────────────────────────────────────────────────────────
+const state = {
+  relation: null,   // 'Father' | 'Spouse'
+  epf:      null,   // 'Yes' | 'No'
+  eps:      null,
+  intl:     null,
+  r12c3:    null,
+  r12c4:    null,
+  r12c5:    null,
+  r12c6:    null,
+};
+
+// ── Relation (Father / Spouse) ──────────────────────────────────────────
+function selectRelation(val) {
+  state.relation = val;
+  document.getElementById('rel_father').classList.toggle('selected', val === 'Father');
+  document.getElementById('rel_spouse').classList.toggle('selected', val === 'Spouse');
+  // Set inner text as checkmark
+  document.getElementById('rel_father').textContent = val === 'Father' ? '✓' : '';
+  document.getElementById('rel_spouse').textContent = val === 'Spouse' ? '✓' : '';
+}
+
+// ── Yes / No toggle ─────────────────────────────────────────────────────
+function selectYN(field, val) {
+  state[field] = val;
+  const yesEl = document.getElementById(`yn_${field}_yes`);
+  const noEl  = document.getElementById(`yn_${field}_no`);
+  if (yesEl) yesEl.classList.toggle('selected', val === 'Yes');
+  if (noEl)  noEl.classList.toggle('selected',  val === 'No');
+
+  // Conditional sections
+  if (field === 'epf' || field === 'eps') updateSection9();
+  if (field === 'intl')                   updateSection10b();
+}
+
+function updateSection9() {
+  const needed = state.epf === 'Yes' || state.eps === 'Yes';
+  ['f_uan','f_prev_pf','f_date_exit','f_scheme_cert','f_ppo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (needed) { el.classList.remove('disabled'); el.removeAttribute('disabled'); }
+    else        { el.classList.add('disabled'); el.setAttribute('disabled',''); el.value = ''; }
+  });
+}
+
+function updateSection10b() {
+  const needed = state.intl === 'Yes';
+  ['f_country','f_passport_no','f_passport_val'].forEach(id => {
+    const el = document.getElementById(id);
+    if (needed) { el.classList.remove('disabled'); el.removeAttribute('disabled'); }
+    else        { el.classList.add('disabled'); el.setAttribute('disabled',''); el.value = ''; }
+  });
+}
+
+// ── Help content ────────────────────────────────────────────────────────
+const HELP = {
+  name: {
+    title: '1 · Name of Member',
+    text:  'Enter your full name exactly as it appears on your Aadhaar card. Do not use initials or short forms.',
+    example: 'e.g.  RAHUL KUMAR SINGH  (not "R. K. Singh")'
+  },
+  parent_name: {
+    title: '2 · Father\'s / Spouse\'s Name',
+    text:  'First click the small box next to "Father\'s Name" or "Spouse\'s Name" (whichever applies to you), then type their full name here. If you are unmarried, select Father. If married, select Spouse.',
+    example: 'e.g.  RAJESH KUMAR SINGH'
+  },
+  dob: {
+    title: '3 · Date of Birth',
+    text:  'Enter your date of birth as shown on your Aadhaar card, in DD/MM/YYYY format.',
+    example: 'e.g.  15/07/1995'
+  },
+  gender: {
+    title: '4 · Gender',
+    text:  'Select your gender from the dropdown: Male, Female, or Transgender.'
+  },
+  marital: {
+    title: '5 · Marital Status',
+    text:  'Select your current marital status. Choose the option that best describes you right now.'
+  },
+  email: {
+    title: '6a · eMail ID',
+    text:  'Enter your personal email address. This is used for official communications from EPFO.',
+    example: 'e.g.  rahul.singh@gmail.com'
+  },
+  mobile: {
+    title: '6b · Mobile Number',
+    text:  'Enter the 10-digit mobile number that is linked to your Aadhaar card. This is used for OTP-based verification on the EPFO portal.',
+    example: 'e.g.  9876543210'
+  },
+  epf: {
+    title: '7 · Previous EPF Membership',
+    text:  'Did you work at any other company before joining here, AND was that company covered under PF (EPF)? If yes, select Yes. If this is your VERY FIRST JOB, select No.',
+    example: 'Tip: If you have a UAN number from a previous employer, the answer is Yes.'
+  },
+  eps: {
+    title: '8 · Previous EPS (Pension) Membership',
+    text:  'Were you a member of the Employee Pension Scheme at a previous job? Generally, if your salary was ₹15,000 or less when you first joined EPF, you were also in EPS. If this is your first job, select No.',
+    example: 'Tip: If you joined EPF for the first time after 01/09/2014 with salary above ₹15,000, you may not be an EPS member.'
+  },
+  uan: {
+    title: '9a · Universal Account Number (UAN)',
+    text:  'Your 12-digit UAN from your previous employer. You can find it on your old salary slips, appointment letter, or by logging in to the EPF member portal at epfindia.gov.in → Member UAN/Online Services.',
+    example: 'e.g.  101234567890'
+  },
+  prev_pf: {
+    title: '9b · Previous PF Account Number',
+    text:  'The PF account number assigned by your previous employer. It follows the format: State Code / Establishment Code / Member Number.',
+    example: 'e.g.  MH/BAN/12345/000/0000678'
+  },
+  date_exit: {
+    title: '9c · Date of Exit from Previous Employment',
+    text:  'The last working day at your previous employer, in DD/MM/YYYY format.',
+    example: 'e.g.  31/03/2023'
+  },
+  scheme_cert: {
+    title: '9d · Scheme Certificate Number',
+    text:  'Only if your previous employer gave you an official Pension Scheme Certificate when you left. Most employees do not have this. If you don\'t have one, type N/A.',
+    example: 'If unsure, type:  N/A'
+  },
+  ppo: {
+    title: '9e · Pension Payment Order (PPO) Number',
+    text:  'Only applicable if you are already receiving a pension from EPFO (very rare for current employees). If you don\'t have a PPO, type N/A.',
+    example: 'If unsure, type:  N/A'
+  },
+  intl: {
+    title: '10 · International Worker',
+    text:  'Select Yes ONLY if you are a foreign national working in India, OR an Indian national currently working abroad in a country that has a Social Security Agreement (SSA) with India (e.g., Japan, Germany, France, South Korea, etc.). For most Indian employees working in India — select No.',
+  },
+  country: {
+    title: '10b · Country of Origin',
+    text:  'Enter the name of your home country (the country you are a citizen of).',
+    example: 'e.g.  Japan'
+  },
+  passport: {
+    title: '10c · Passport Number',
+    text:  'Enter your passport number exactly as it appears on the biographic page of your passport.',
+    example: 'e.g.  A1234567'
+  },
+  passport_val: {
+    title: '10d · Passport Validity (Expiry Date)',
+    text:  'Enter the expiry date of your passport in DD/MM/YYYY format. You can find this on the last page of your passport.',
+    example: 'e.g.  25/12/2030'
+  },
+  bank: {
+    title: '11a · Bank Account Number & IFSC Code',
+    text:  'Enter your bank account number AND your bank\'s IFSC code. Both can be found on your bank passbook or cheque book. Write them together in this field.',
+    example: 'e.g.  Acc: 987654321012   IFSC: HDFC0001234'
+  },
+  aadhaar: {
+    title: '11b · Aadhaar Number',
+    text:  'Enter your 12-digit Aadhaar number. You can find it on your Aadhaar card (the number printed at the bottom).',
+    example: 'e.g.  1234 5678 9012'
+  },
+  pan: {
+    title: '11c · PAN Number',
+    text:  'Enter your 10-character PAN number from your PAN card. If you do not have a PAN card, type N/A.',
+    example: 'e.g.  ABCDE1234F'
+  },
+  row12: {
+    title: '12 · EPF History',
+    text:  'This section is about your ENTIRE PF history across all jobs:\n\n• First EPF Date: The date you first joined EPF in your career (check the oldest record in your UAN passbook).\n\n• First EPF Wages: Your salary in the very first month at your first EPF job. Tip: Divide your EPF contribution by 12% to get the salary (e.g., ₹1,800 contribution → ₹15,000 salary).\n\n• Before 01/09/2014: If your first EPF date is before 1 Sep 2014, select Yes.\n\n• EPF Withdrawn: Select Yes if you ever withdrew your PF balance from any past employer.\n\n• EPS Withdrawn: Select Yes if you ever withdrew your pension amount.\n\n• EPS after Sep 2014: Select Yes if you withdrew any pension earned after September 2014 before joining this company.',
+    example: 'If this is your first job, enter today\'s date as the First EPF Date and your current salary as First EPF Wages.'
+  },
+  first_epf_date: {
+    title: '12 · First EPF Enrolled Date',
+    text:  'The date you joined EPF for the very first time in your entire career. Log in to the EPF portal (epfindia.gov.in) and check your service history — look for the earliest Date of Joining.',
+    example: 'e.g.  01/08/2018  (or today\'s date if this is your first job)'
+  },
+  first_epf_wages: {
+    title: '12 · First Employment EPF Wages',
+    text:  'Your monthly salary at your VERY FIRST EPF-covered job. Check your first employer\'s EPF passbook. To calculate: divide the monthly EPF deduction by 12%.',
+    example: 'e.g.  If EPF deduction was ₹1,800 → salary = 1800 ÷ 0.12 = ₹15,000'
+  },
+  sign_date: {
+    title: 'Undertaking — Date',
+    text:  'Enter today\'s date (the date you are filling and signing this form), in DD/MM/YYYY format.',
+    example: 'e.g.  07/04/2026'
+  },
+  sign_place: {
+    title: 'Undertaking — Place',
+    text:  'Enter the name of the city or town where you are currently working or signing this form.',
+    example: 'e.g.  Mumbai'
+  },
+};
+
+function showHelp(key) {
+  const h = HELP[key];
+  if (!h) return;
+  document.getElementById('helpTitle').textContent = h.title;
+  document.getElementById('helpText').textContent  = h.text;
+  const exEl = document.getElementById('helpExample');
+  if (h.example) { exEl.textContent = h.example; exEl.style.display = 'block'; }
+  else             { exEl.style.display = 'none'; }
+  document.getElementById('helpOverlay').classList.add('open');
+}
+function closeHelp(e) {
+  if (!e || e.target === document.getElementById('helpOverlay') || e.currentTarget.id === 'closeHelp') {
+    document.getElementById('helpOverlay').classList.remove('open');
+  }
+}
+
+// ── Clear all ───────────────────────────────────────────────────────────
+function clearAll() {
+  document.querySelectorAll('.ov-input, .ov-select').forEach(el => el.value = '');
+  ['epf','eps','intl','r12c3','r12c4','r12c5','r12c6'].forEach(f => { state[f] = null; });
+  document.querySelectorAll('.yn-opt').forEach(el => el.classList.remove('selected'));
+  state.relation = null;
+  selectRelation && ['rel_father','rel_spouse'].forEach(id => {
+    document.getElementById(id).classList.remove('selected');
+    document.getElementById(id).textContent = '';
+  });
+  updateSection9(); updateSection10b();
+  document.querySelectorAll('.ov-input, .ov-select').forEach(el => el.classList.remove('error'));
+}
+
+// ── Toast ───────────────────────────────────────────────────────────────
+function toast(msg, dur = 2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ── Collect form data ───────────────────────────────────────────────────
+function collectData() {
+  return {
+    name:                   document.getElementById('f_name').value.trim(),
+    relation:               state.relation || '',
+    parent_name:            document.getElementById('f_parent_name').value.trim(),
+    dob:                    document.getElementById('f_dob').value.trim(),
+    gender:                 document.getElementById('f_gender').value,
+    marital_status:         document.getElementById('f_marital').value,
+    email:                  document.getElementById('f_email').value.trim(),
+    mobile:                 document.getElementById('f_mobile').value.trim(),
+    epf_member_1952:        state.epf  || 'No',
+    eps_member_1995:        state.eps  || 'No',
+    uan:                    document.getElementById('f_uan').value.trim(),
+    previous_pf_account:    document.getElementById('f_prev_pf').value.trim(),
+    date_of_exit:           document.getElementById('f_date_exit').value.trim(),
+    scheme_certificate:     document.getElementById('f_scheme_cert').value.trim(),
+    ppo:                    document.getElementById('f_ppo').value.trim(),
+    international_worker:   state.intl || 'No',
+    country_of_origin:      document.getElementById('f_country').value.trim(),
+    passport_no:            document.getElementById('f_passport_no').value.trim(),
+    passport_validity:      document.getElementById('f_passport_val').value.trim(),
+    bank_account_ifsc:      document.getElementById('f_bank').value.trim(),
+    aadhaar_number:         document.getElementById('f_aadhaar').value.trim(),
+    pan:                    document.getElementById('f_pan').value.trim(),
+    first_epf_enrolled_date:document.getElementById('f_first_epf_date').value.trim(),
+    first_employment_epf_wages: document.getElementById('f_first_epf_wages').value.trim(),
+    epf_member_before_2014: state.r12c3 || 'No',
+    epf_amount_withdrawn:   state.r12c4 || 'No',
+    eps_amount_withdrawn:   state.r12c5 || 'No',
+    eps_after_sep2014_withdrawn: state.r12c6 || 'No',
+    sign_date:              document.getElementById('f_date').value.trim(),
+    sign_place:             document.getElementById('f_place').value.trim(),
+  };
+}
+
+// ── Validation ──────────────────────────────────────────────────────────
+function validate(d) {
+  const errors = [];
+  const req = [
+    ['f_name', 'Name of Member (Field 1)'],
+    ['f_parent_name', "Father's / Spouse's Name (Field 2)"],
+    ['f_dob',  'Date of Birth (Field 3)'],
+    ['f_gender','Gender (Field 4)'],
+    ['f_marital','Marital Status (Field 5)'],
+    ['f_email','Email (Field 6a)'],
+    ['f_mobile','Mobile Number (Field 6b)'],
+    ['f_bank', 'Bank Account & IFSC (Field 11a)'],
+    ['f_aadhaar','Aadhaar Number (Field 11b)'],
+    ['f_first_epf_date','First EPF Date (Field 12)'],
+    ['f_first_epf_wages','First EPF Wages (Field 12)'],
+  ];
+  document.querySelectorAll('.ov-input, .ov-select').forEach(el => el.classList.remove('error'));
+
+  req.forEach(([id, label]) => {
+    const el = document.getElementById(id);
+    if (!el || el.disabled) return;
+    if (!el.value.trim()) {
+      el.classList.add('error');
+      errors.push(label);
+    }
+  });
+  if (!state.relation) errors.push('Father / Spouse selection (Field 2)');
+  if (!state.epf)  errors.push('Field 7: EPF membership (Yes/No)');
+  if (!state.eps)  errors.push('Field 8: EPS membership (Yes/No)');
+  if (!state.intl) errors.push('Field 10: International Worker (Yes/No)');
+  if (!state.r12c3) errors.push('Field 12: EPF before 2014 (Yes/No)');
+  if (!state.r12c4) errors.push('Field 12: EPF amount withdrawn (Yes/No)');
+  if (!state.r12c5) errors.push('Field 12: EPS withdrawn (Yes/No)');
+  if (!state.r12c6) errors.push('Field 12: EPS after Sep 2014 (Yes/No)');
+  return errors;
+}
+
+// ── PDF generation ──────────────────────────────────────────────────────
+async function downloadPDF() {
+  const d = collectData();
+  const errors = validate(d);
+  if (errors.length) {
+    toast(`⚠️  Please fill: ${errors.slice(0,3).join(', ')}${errors.length > 3 ? ` +${errors.length-3} more` : ''}`, 4000);
+    return;
+  }
+
+  const btn = document.getElementById('downloadBtn');
+  btn.disabled = true; btn.textContent = '⏳ Generating…';
+
+  try {
+    // Load the PDF template
+    const resp = await fetch('form11_template.pdf');
+    const pdfBytes = await resp.arrayBuffer();
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+
+    const pdfDoc  = await PDFDocument.load(pdfBytes);
+    const font    = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontB   = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const page    = pdfDoc.getPages()[0];
+    const BLUE    = rgb(0, 0, 0.75);
+    const RED     = rgb(0.85, 0, 0);
+
+    // y = 792 - structure_top (PDF lib uses y from bottom)
+    const cy = t => 792 - t;
+
+    function txt(x, structY, text, size = 8.5) {
+      if (!text) return;
+      page.drawText(String(text), { x, y: cy(structY), size, font, color: BLUE });
+    }
+
+    function underline(x0, x1, structY) {
+      page.drawLine({
+        start: { x: x0, y: cy(structY) },
+        end:   { x: x1, y: cy(structY) },
+        thickness: 1.5,
+        color: RED,
+      });
+    }
+
+    function markYN(val, yesX0, yesX1, noX0, noX1, structYBottom) {
+      if (val === 'Yes') underline(yesX0, yesX1, structYBottom);
+      else               underline(noX0,  noX1,  structYBottom);
+    }
+
+    // ── Field 1: Name ───────────────────────────────────────────────────
+    txt(373, 113, d.name);
+
+    // ── Field 2: Relation checkbox + parent name ─────────────────────────
+    if (d.relation === 'Father')
+      page.drawText('X', { x: 165, y: cy(128), size: 8, font: fontB, color: BLUE });
+    else
+      page.drawText('X', { x: 287, y: cy(128), size: 8, font: fontB, color: BLUE });
+    txt(373, 129, d.parent_name);
+
+    // ── Field 3: DOB ─────────────────────────────────────────────────────
+    txt(373, 149, d.dob);
+
+    // ── Field 4: Gender ──────────────────────────────────────────────────
+    txt(373, 163, d.gender);
+
+    // ── Field 5: Marital Status ──────────────────────────────────────────
+    txt(373, 178, d.marital_status);
+
+    // ── Field 6a: Email ──────────────────────────────────────────────────
+    txt(373, 193, d.email, 8);
+
+    // ── Field 6b: Mobile ─────────────────────────────────────────────────
+    txt(373, 208, d.mobile);
+
+    // ── Field 7: EPF Yes/No ──────────────────────────────────────────────
+    markYN(d.epf_member_1952, 410.9, 424.6, 433.5, 444.2, 233);
+
+    // ── Field 8: EPS Yes/No ──────────────────────────────────────────────
+    markYN(d.eps_member_1995, 410.9, 424.6, 433.5, 444.2, 256);
+
+    // ── Field 9: Previous Employment ─────────────────────────────────────
+    if (d.epf_member_1952 === 'Yes' || d.eps_member_1995 === 'Yes') {
+      txt(260, 282, d.uan);
+      txt(260, 297, d.previous_pf_account);
+      txt(260, 313, d.date_of_exit);
+      txt(260, 328, d.scheme_certificate || 'N/A');
+      txt(260, 344, d.ppo || 'N/A');
+    }
+
+    // ── Field 10: International Worker ───────────────────────────────────
+    markYN(d.international_worker, 410.9, 424.6, 433.5, 444.2, 366);
+    if (d.international_worker === 'Yes') {
+      txt(373, 373, d.country_of_origin);
+      txt(373, 388, d.passport_no);
+      txt(373, 404, d.passport_validity);
+    }
+
+    // ── Field 11: KYC ────────────────────────────────────────────────────
+    txt(373, 437, d.bank_account_ifsc, 8);
+    txt(373, 453, d.aadhaar_number);
+    txt(373, 468, d.pan);
+
+    // ── Field 12: EPF History ─────────────────────────────────────────────
+    txt(90,  519, d.first_epf_enrolled_date);
+    txt(165, 519, d.first_employment_epf_wages);
+
+    markYN(d.epf_member_before_2014,  263.3, 274.9, 282.4, 291.3, 524);
+    markYN(d.epf_amount_withdrawn,    336.0, 347.6, 355.1, 364.0, 524);
+    markYN(d.eps_amount_withdrawn,    408.7, 420.3, 427.8, 436.7, 524);
+    markYN(d.eps_after_sep2014_withdrawn, 486.1, 497.7, 505.3, 514.1, 524);
+
+    // ── Undertaking: Date & Place ─────────────────────────────────────────
+    txt(100, 597, d.sign_date);
+    txt(100, 608, d.sign_place);
+
+    // ── Save & download ───────────────────────────────────────────────────
+    const filled = await pdfDoc.save();
+    const blob   = new Blob([filled], { type: 'application/pdf' });
+    const url    = URL.createObjectURL(blob);
+    const a      = document.createElement('a');
+    const safeName = (d.name || 'employee').replace(/[^a-z0-9]/gi, '_');
+    a.href = url; a.download = `Form11_${safeName}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('✅  Form 11 downloaded successfully!');
+  } catch (err) {
+    console.error(err);
+    toast('❌  Error generating PDF: ' + err.message, 5000);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '⬇ Download PDF';
+  }
+}
+</script>
+</body>
+</html>
